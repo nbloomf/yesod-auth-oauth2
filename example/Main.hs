@@ -26,15 +26,16 @@ import Data.Aeson.Encode.Pretty
 import Data.ByteString.Lazy (fromStrict, toStrict)
 import qualified Data.Map as M
 import Data.Maybe (fromJust)
-import Data.Text (Text)
+import Data.Text (Text, pack)
 import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8)
 import LoadEnv
 import Network.HTTP.Conduit
 import Network.Wai.Handler.Warp (runEnv)
-import System.Environment (getEnv)
+import System.Environment (getEnv, lookupEnv)
 import Yesod
 import Yesod.Auth
+import Yesod.Auth.OAuth2.AzureAD
 import Yesod.Auth.OAuth2.BattleNet
 import Yesod.Auth.OAuth2.Bitbucket
 import Yesod.Auth.OAuth2.EveOnline
@@ -45,11 +46,13 @@ import Yesod.Auth.OAuth2.Nylas
 import Yesod.Auth.OAuth2.Salesforce
 import Yesod.Auth.OAuth2.Slack
 import Yesod.Auth.OAuth2.Spotify
+import Yesod.Auth.OAuth2.WordPressDotCom
 import Yesod.Auth.OAuth2.Upcase
 
 data App = App
     { appHttpManager :: Manager
     , appAuthPlugins :: [AuthPlugin App]
+    , appAppRoot :: Text
     }
 
 mkYesod "App" [parseRoutes|
@@ -59,7 +62,7 @@ mkYesod "App" [parseRoutes|
 
 instance Yesod App where
     -- see https://github.com/thoughtbot/yesod-auth-oauth2/issues/87
-    approot = ApprootStatic "http://localhost:3000"
+    approot = ApprootMaster appAppRoot
 
 instance YesodAuth App where
     type AuthId App = Text
@@ -133,7 +136,8 @@ mkFoundation = do
         --
         -- FIXME: oauth2BattleNet is quite annoying!
         --
-        [ loadPlugin (oauth2BattleNet [whamlet|TODO|] "en") "BATTLE_NET"
+        [ loadPlugin oauth2AzureAD "AZURE_AD"
+        , loadPlugin (oauth2BattleNet [whamlet|TODO|] "en") "BATTLE_NET"
         , loadPlugin oauth2Bitbucket "BITBUCKET"
         , loadPlugin (oauth2Eve Plain) "EVE_ONLINE"
         , loadPlugin oauth2GitHub "GITHUB"
@@ -143,8 +147,15 @@ mkFoundation = do
         , loadPlugin oauth2Salesforce "SALES_FORCE"
         , loadPlugin oauth2Slack "SLACK"
         , loadPlugin (oauth2Spotify []) "SPOTIFY"
+        , loadPlugin oauth2WordPressDotCom "WORDPRESS_DOT_COM"
         , loadPlugin oauth2Upcase "UPCASE"
         ]
+
+    appAppRoot <- do
+      root <- lookupEnv "APPROOT"
+      return $ pack $ case root of
+        Nothing -> "http://localhost:3000"
+        Just url -> url
 
     return App {..}
   where
